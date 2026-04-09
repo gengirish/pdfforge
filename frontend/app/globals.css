@@ -257,13 +257,96 @@ a:focus-visible {
   opacity: 0.4;
 }
 
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.pricing-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-highlight {
+  border-color: rgba(110, 168, 254, 0.6);
+  box-shadow: 0 0 0 1px rgba(110, 168, 254, 0.25) inset;
+}
+
+.price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 8px 0 12px;
+}
+
+.price-amount {
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.price-period {
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.pricing-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 auto;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.pricing-features li {
+  padding: 4px 0;
+}
+
+.pricing-features li::before {
+  content: "✓ ";
+  color: #2eb67d;
+  font-weight: 700;
+}
+
+.pricing-cta {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #6ea8fe 0%, #4e8ef0 100%);
+  color: #04132f;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.pricing-cta:hover {
+  filter: brightness(1.05);
+}
+
+.pricing-cta-muted {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-soft);
+  cursor: default;
+  border: 1px solid var(--border);
+}
+
+.pricing-cta-muted:hover {
+  filter: none;
+}
+
 @media (max-width: 880px) {
   .traction-grid,
   .faq-grid {
     grid-template-columns: 1fr 1fr;
   }
 
-  .problem-solution {
+  .problem-solution,
+  .pricing-grid {
     grid-template-columns: 1fr;
   }
 
@@ -277,7 +360,8 @@ a:focus-visible {
   .row,
   .waitlist-grid,
   .traction-grid,
-  .faq-grid {
+  .faq-grid,
+  .pricing-grid {
     grid-template-columns: 1fr;
   }
 }

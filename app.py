@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
 import io
+import json
 import logging
 import os
 import re
@@ -9,7 +11,9 @@ import sqlite3
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pdfplumber
 from flask import Flask, Response, jsonify, redirect, render_template_string, request, send_file, url_for
@@ -36,6 +40,11 @@ WAITLIST_DB_PATH = Path(os.getenv("WAITLIST_DB_PATH", Path(__file__).with_name("
 WAITLIST_DATABASE_URL = os.getenv("WAITLIST_DATABASE_URL", "").strip()
 WAITLIST_ADMIN_TOKEN = os.getenv("WAITLIST_ADMIN_TOKEN", "")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+LEMONSQUEEZY_WEBHOOK_SECRET = os.getenv("LEMONSQUEEZY_WEBHOOK_SECRET", "")
+LEMONSQUEEZY_API_KEY = os.getenv("LEMONSQUEEZY_API_KEY", "")
+LEMONSQUEEZY_STORE_ID = os.getenv("LEMONSQUEEZY_STORE_ID", "")
+LEMONSQUEEZY_PRO_VARIANT_ID = os.getenv("LEMONSQUEEZY_PRO_VARIANT_ID", "")
+LEMONSQUEEZY_TEAM_VARIANT_ID = os.getenv("LEMONSQUEEZY_TEAM_VARIANT_ID", "")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -594,6 +603,24 @@ def init_waitlist_db() -> None:
                     """
                 )
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_waitlist_created ON waitlist_signups(created_at DESC)")
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS subscriptions (
+                        id BIGSERIAL PRIMARY KEY,
+                        email TEXT NOT NULL,
+                        customer_id TEXT NOT NULL DEFAULT '',
+                        subscription_id TEXT NOT NULL DEFAULT '',
+                        variant_id TEXT NOT NULL DEFAULT '',
+                        plan TEXT NOT NULL DEFAULT 'free',
+                        status TEXT NOT NULL DEFAULT 'active',
+                        current_period_end TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email)")
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status)")
             conn.commit()
         return
 
@@ -614,7 +641,226 @@ def init_waitlist_db() -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_waitlist_created ON waitlist_signups(created_at DESC)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                customer_id TEXT NOT NULL DEFAULT '',
+                subscription_id TEXT NOT NULL DEFAULT '',
+                variant_id TEXT NOT NULL DEFAULT '',
+                plan TEXT NOT NULL DEFAULT 'free',
+                status TEXT NOT NULL DEFAULT 'active',
+                current_period_end TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status)")
         conn.commit()
+
+
+def _waitlist_using_postgres() -> bool:
+    return WAITLIST_DATABASE_URL.startswith("postgresql://") or WAITLIST_DATABASE_URL.startswith("postgres://")
+
+
+def subscription_variant_to_plan(variant_id: Any) -> str:
+    vid = str(variant_id).strip() if variant_id is not None else ""
+    pro = LEMONSQUEEZY_PRO_VARIANT_ID.strip()
+    team = LEMONSQUEEZY_TEAM_VARIANT_ID.strip()
+    if pro and vid == pro:
+        return "pro"
+    if team and vid == team:
+        return "team"
+    return "other"
+
+
+def subscription_upsert_created(
+    *,
+    email: str,
+    customer_id: str,
+    subscription_id: str,
+    variant_id: str,
+    plan: str,
+    status: str,
+    current_period_end: str,
+) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    if _waitlist_using_postgres():
+        if psycopg is None:
+            raise RuntimeError("Postgres driver not installed.")
+        with psycopg.connect(WAITLIST_DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO subscriptions (
+                        email, customer_id, subscription_id, variant_id, plan, status,
+                        current_period_end, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (email) DO UPDATE SET
+                        customer_id = EXCLUDED.customer_id,
+                        subscription_id = EXCLUDED.subscription_id,
+                        variant_id = EXCLUDED.variant_id,
+                        plan = EXCLUDED.plan,
+                        status = EXCLUDED.status,
+                        current_period_end = EXCLUDED.current_period_end,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        email,
+                        customer_id,
+                        subscription_id,
+                        variant_id,
+                        plan,
+                        status,
+                        current_period_end,
+                        now,
+                        now,
+                    ),
+                )
+            conn.commit()
+        return
+
+    with sqlite3.connect(WAITLIST_DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO subscriptions (
+                email, customer_id, subscription_id, variant_id, plan, status,
+                current_period_end, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(email) DO UPDATE SET
+                customer_id = excluded.customer_id,
+                subscription_id = excluded.subscription_id,
+                variant_id = excluded.variant_id,
+                plan = excluded.plan,
+                status = excluded.status,
+                current_period_end = excluded.current_period_end,
+                updated_at = excluded.updated_at
+            """,
+            (
+                email,
+                customer_id,
+                subscription_id,
+                variant_id,
+                plan,
+                status,
+                current_period_end,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+
+
+def subscription_update_status_and_period(
+    *,
+    email: str,
+    status: str | None = None,
+    current_period_end: str | None = None,
+) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    if _waitlist_using_postgres():
+        if psycopg is None:
+            raise RuntimeError("Postgres driver not installed.")
+        with psycopg.connect(WAITLIST_DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                if status is not None and current_period_end is not None:
+                    cur.execute(
+                        """
+                        UPDATE subscriptions
+                        SET status = %s, current_period_end = %s, updated_at = %s
+                        WHERE email = %s
+                        """,
+                        (status, current_period_end, now, email),
+                    )
+                elif status is not None:
+                    cur.execute(
+                        "UPDATE subscriptions SET status = %s, updated_at = %s WHERE email = %s",
+                        (status, now, email),
+                    )
+                elif current_period_end is not None:
+                    cur.execute(
+                        """
+                        UPDATE subscriptions
+                        SET current_period_end = %s, updated_at = %s
+                        WHERE email = %s
+                        """,
+                        (current_period_end, now, email),
+                    )
+            conn.commit()
+        return
+
+    with sqlite3.connect(WAITLIST_DB_PATH) as conn:
+        if status is not None and current_period_end is not None:
+            conn.execute(
+                """
+                UPDATE subscriptions
+                SET status = ?, current_period_end = ?, updated_at = ?
+                WHERE email = ?
+                """,
+                (status, current_period_end, now, email),
+            )
+        elif status is not None:
+            conn.execute(
+                "UPDATE subscriptions SET status = ?, updated_at = ? WHERE email = ?",
+                (status, now, email),
+            )
+        elif current_period_end is not None:
+            conn.execute(
+                "UPDATE subscriptions SET current_period_end = ?, updated_at = ? WHERE email = ?",
+                (current_period_end, now, email),
+            )
+        conn.commit()
+
+
+def read_subscription_by_email(email: str) -> dict | None:
+    normalized = email.strip().lower()
+    if _waitlist_using_postgres():
+        if psycopg is None:
+            return None
+        with psycopg.connect(WAITLIST_DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, email, customer_id, subscription_id, variant_id, plan, status,
+                           current_period_end, created_at, updated_at
+                    FROM subscriptions
+                    WHERE email = %s
+                    """,
+                    (normalized,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "email": row[1],
+            "customer_id": row[2],
+            "subscription_id": row[3],
+            "variant_id": row[4],
+            "plan": row[5],
+            "status": row[6],
+            "current_period_end": row[7],
+            "created_at": row[8],
+            "updated_at": row[9],
+        }
+
+    with sqlite3.connect(WAITLIST_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            """
+            SELECT id, email, customer_id, subscription_id, variant_id, plan, status,
+                   current_period_end, created_at, updated_at
+            FROM subscriptions
+            WHERE email = ?
+            """,
+            (normalized,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def is_valid_email(email: str) -> bool:
@@ -1004,6 +1250,177 @@ def waitlist_list_v1() -> Response:
     if not is_admin_authorized():
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
     return jsonify({"status": "ok", "items": read_waitlist_signups(limit=1000)})
+
+
+@app.post("/api/v1/webhooks/lemonsqueezy")
+def lemonsqueezy_webhook_v1() -> Response:
+    raw = request.get_data(cache=False, as_text=False) or b""
+    if not LEMONSQUEEZY_WEBHOOK_SECRET:
+        return jsonify({"status": "error", "message": "Webhook secret not configured"}), 401
+    sig_header = (request.headers.get("X-Signature") or "").strip()
+    if not sig_header:
+        return jsonify({"status": "error", "message": "Missing signature"}), 401
+    expected_sig = hmac.new(
+        LEMONSQUEEZY_WEBHOOK_SECRET.encode("utf-8"),
+        raw,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_sig, sig_header):
+        return jsonify({"status": "error", "message": "Invalid signature"}), 401
+
+    try:
+        payload: dict[str, Any] = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+    event = (request.headers.get("X-Event-Name") or "").strip()
+    if not event:
+        event = str((payload.get("meta") or {}).get("event_name") or "").strip()
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return jsonify({"status": "error", "message": "Invalid payload"}), 400
+    attrs = data.get("attributes")
+    if not isinstance(attrs, dict):
+        attrs = {}
+
+    if not event.startswith("subscription_"):
+        return jsonify({"status": "ok", "ignored": True}), 200
+
+    user_email = str(attrs.get("user_email") or "").strip().lower()
+    if not user_email or not is_valid_email(user_email):
+        return jsonify({"status": "error", "message": "Invalid or missing user_email"}), 400
+
+    customer_id = "" if attrs.get("customer_id") is None else str(attrs.get("customer_id"))
+    variant_id = "" if attrs.get("variant_id") is None else str(attrs.get("variant_id"))
+    sub_status = str(attrs.get("status") or "")
+    renews = attrs.get("renews_at")
+    period_end = str(renews) if renews is not None else ""
+    subscription_id = str(data.get("id") or "")
+
+    try:
+        if event == "subscription_created":
+            plan = subscription_variant_to_plan(variant_id)
+            subscription_upsert_created(
+                email=user_email,
+                customer_id=customer_id,
+                subscription_id=subscription_id,
+                variant_id=variant_id,
+                plan=plan,
+                status=sub_status or "active",
+                current_period_end=period_end,
+            )
+        elif event == "subscription_updated":
+            subscription_update_status_and_period(
+                email=user_email,
+                status=sub_status if sub_status else None,
+                current_period_end=period_end if period_end else None,
+            )
+        elif event == "subscription_cancelled":
+            subscription_update_status_and_period(email=user_email, status="cancelled")
+        elif event == "subscription_expired":
+            subscription_update_status_and_period(email=user_email, status="expired")
+        else:
+            return jsonify({"status": "ok", "ignored": True}), 200
+    except Exception as exc:
+        app.logger.exception("Lemon Squeezy webhook handler failed: %s", exc)
+        return jsonify({"status": "error", "message": "Database error"}), 400
+
+    return jsonify({"status": "ok"}), 200
+
+
+@app.get("/api/v1/subscription")
+def subscription_lookup_v1() -> Response:
+    email = request.args.get("email", "").strip()
+    if not email:
+        return jsonify({"status": "error", "message": "Missing email parameter"}), 400
+    if not is_valid_email(email):
+        return jsonify({"status": "error", "message": "Invalid email address"}), 400
+    row = read_subscription_by_email(email)
+    if not row:
+        return jsonify({"status": "ok", "subscription": None}), 200
+    return jsonify(
+        {
+            "status": "ok",
+            "subscription": {
+                "email": row["email"],
+                "plan": row["plan"],
+                "status": row["status"],
+                "current_period_end": row["current_period_end"],
+                "subscription_id": row["subscription_id"],
+                "variant_id": row["variant_id"],
+                "updated_at": row["updated_at"],
+            },
+        }
+    ), 200
+
+
+@app.post("/api/v1/checkout")
+def lemonsqueezy_checkout_v1() -> Response:
+    body = request.get_json(silent=True) or {}
+    variant_id = str(body.get("variant_id", "")).strip()
+    email = str(body.get("email", "")).strip()
+    if not variant_id:
+        return jsonify({"status": "error", "message": "variant_id is required"}), 400
+    if not is_valid_email(email):
+        return jsonify({"status": "error", "message": "Valid email is required"}), 400
+    if not LEMONSQUEEZY_API_KEY or not LEMONSQUEEZY_STORE_ID.strip():
+        return jsonify({"status": "error", "message": "Checkout is not configured"}), 400
+
+    checkout_payload = {
+        "data": {
+            "type": "checkouts",
+            "attributes": {
+                "checkout_data": {"email": email},
+            },
+            "relationships": {
+                "store": {
+                    "data": {
+                        "type": "stores",
+                        "id": str(LEMONSQUEEZY_STORE_ID.strip()),
+                    }
+                },
+                "variant": {
+                    "data": {
+                        "type": "variants",
+                        "id": variant_id,
+                    }
+                },
+            },
+        }
+    }
+    req = Request(
+        "https://api.lemonsqueezy.com/v1/checkouts",
+        data=json.dumps(checkout_payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {LEMONSQUEEZY_API_KEY}",
+            "Content-Type": "application/vnd.api+json",
+            "Accept": "application/vnd.api+json",
+        },
+    )
+    try:
+        with urlopen(req, timeout=30) as resp:
+            resp_body = resp.read().decode("utf-8")
+    except HTTPError as exc:
+        err_text = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
+        app.logger.warning("Lemon Squeezy checkout API error: %s %s", exc.code, err_text)
+        return jsonify({"status": "error", "message": "Failed to create checkout", "detail": err_text}), 400
+    except URLError as exc:
+        app.logger.warning("Lemon Squeezy checkout request failed: %s", exc)
+        return jsonify({"status": "error", "message": "Checkout request failed"}), 400
+
+    try:
+        parsed = json.loads(resp_body)
+    except json.JSONDecodeError:
+        return jsonify({"status": "error", "message": "Invalid response from payment provider"}), 400
+
+    checkout_url = (parsed.get("data") or {}).get("attributes") or {}
+    url = checkout_url.get("url") if isinstance(checkout_url, dict) else None
+    if not url:
+        return jsonify({"status": "error", "message": "No checkout URL in response"}), 400
+
+    return jsonify({"status": "ok", "url": url}), 200
 
 
 @app.errorhandler(413)

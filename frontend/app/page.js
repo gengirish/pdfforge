@@ -36,6 +36,51 @@ const faqs = [
   },
 ];
 
+const pricingPlans = [
+  {
+    name: "Free",
+    price: "0",
+    period: "/mo",
+    features: [
+      "All 6 PDF tools locally",
+      "No account needed",
+      "Localhost only",
+      "Community support",
+    ],
+    cta: "Current plan",
+    highlighted: false,
+    variantId: null,
+  },
+  {
+    name: "Pro",
+    price: "9",
+    period: "/mo",
+    features: [
+      "Hosted cloud instance",
+      "100MB file uploads",
+      "API key access",
+      "Priority email support",
+    ],
+    cta: "Subscribe",
+    highlighted: true,
+    variantId: process.env.NEXT_PUBLIC_LS_PRO_VARIANT_ID || "",
+  },
+  {
+    name: "Team",
+    price: "29",
+    period: "/mo",
+    features: [
+      "Everything in Pro",
+      "Multi-user workspace",
+      "Audit logs",
+      "Admin controls",
+    ],
+    cta: "Subscribe",
+    highlighted: false,
+    variantId: process.env.NEXT_PUBLIC_LS_TEAM_VARIANT_ID || "",
+  },
+];
+
 function buildUseCaseSummary(form) {
   const parts = [
     `Primary workflow: ${String(form.get("primary_use_case") || "General PDF workflows").trim()}`,
@@ -127,6 +172,28 @@ export default function Page() {
       setWaitlistError("Could not join waitlist right now. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleCheckout(variantId) {
+    if (!variantId) {
+      window.location.href = "#waitlist";
+      return;
+    }
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variant_id: variantId }),
+      });
+      const data = await res.json();
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      } else {
+        window.location.href = "#waitlist";
+      }
+    } catch {
+      window.location.href = "#waitlist";
     }
   }
 
@@ -382,6 +449,39 @@ export default function Page() {
               <li>Live topline metrics: /api/v1/metrics</li>
             </ul>
           </article>
+        </div>
+      </section>
+
+      <section id="pricing">
+        <h2>Pricing</h2>
+        <div className="pricing-grid">
+          {pricingPlans.map((plan) => (
+            <article
+              className={`card pricing-card${plan.highlighted ? " pricing-highlight" : ""}`}
+              key={plan.name}
+            >
+              <h3>{plan.name}</h3>
+              <div className="price-row">
+                <span className="price-amount">${plan.price}</span>
+                <span className="price-period">{plan.period}</span>
+              </div>
+              <ul className="pricing-features">
+                {plan.features.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              {plan.variantId ? (
+                <button
+                  className="pricing-cta"
+                  onClick={() => handleCheckout(plan.variantId)}
+                >
+                  {plan.cta}
+                </button>
+              ) : (
+                <span className="pricing-cta pricing-cta-muted">{plan.cta}</span>
+              )}
+            </article>
+          ))}
         </div>
       </section>
 
