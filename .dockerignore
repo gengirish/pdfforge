@@ -5,4 +5,14 @@ __pycache__/
 *.pyd
 .git/
 .gitignore
+.github/
 README.md
+docs/
+frontend/
+*.db
+*.log
+.env
+.env.*
+.cursor/
+docker-compose.yml
+fly.toml

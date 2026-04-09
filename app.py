@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hmac
 import io
+import logging
 import os
 import re
 import sqlite3
@@ -11,6 +13,7 @@ from typing import Iterable
 
 import pdfplumber
 from flask import Flask, Response, jsonify, redirect, render_template_string, request, send_file, url_for
+from flask_cors import CORS
 from pypdf import PdfReader, PdfWriter
 
 try:
@@ -19,12 +22,22 @@ except ImportError:  # pragma: no cover - optional dependency in local dev
     psycopg = None
 
 app = Flask(__name__)
+
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(",")
+    if o.strip()
+]
+CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=False)
+
 DEFAULT_MAX_MB = int(os.getenv("MAX_CONTENT_LENGTH_MB", "50"))
 app.config["MAX_CONTENT_LENGTH"] = DEFAULT_MAX_MB * 1024 * 1024
 WAITLIST_DB_PATH = Path(os.getenv("WAITLIST_DB_PATH", Path(__file__).with_name("waitlist.db")))
 WAITLIST_DATABASE_URL = os.getenv("WAITLIST_DATABASE_URL", "").strip()
 WAITLIST_ADMIN_TOKEN = os.getenv("WAITLIST_ADMIN_TOKEN", "")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 
 TOOL_CARDS = [
@@ -550,6 +563,15 @@ def bad_request(message: str) -> Response:
     return Response(message, status=400, mimetype="text/plain")
 
 
+def safe_error_message(exc: Exception) -> str:
+    """Return a user-safe error message, hiding internal details in production."""
+    safe_types = (ValueError, zipfile.BadZipFile)
+    if isinstance(exc, safe_types):
+        return str(exc)
+    app.logger.exception("Unexpected error in PDF operation")
+    return "An error occurred processing your PDF. Please check the file and try again."
+
+
 def init_waitlist_db() -> None:
     using_postgres = WAITLIST_DATABASE_URL.startswith("postgresql://") or WAITLIST_DATABASE_URL.startswith("postgres://")
     if using_postgres:
@@ -748,7 +770,7 @@ def is_admin_authorized() -> bool:
     if not WAITLIST_ADMIN_TOKEN:
         return True
     supplied = request.args.get("token", "").strip() or request.headers.get("X-Admin-Token", "").strip()
-    return supplied == WAITLIST_ADMIN_TOKEN
+    return hmac.compare_digest(supplied, WAITLIST_ADMIN_TOKEN)
 
 
 def validate_pdf_upload(field_name: str, allow_multiple: bool = False) -> list:
@@ -1010,7 +1032,7 @@ def merge() -> Response:
             mimetype="application/pdf",
         )
     except Exception as exc:
-        return bad_request(str(exc))
+        return bad_request(safe_error_message(exc))
 
 
 @app.post("/split")
@@ -1044,7 +1066,7 @@ def split() -> Response:
             mimetype="application/zip",
         )
     except Exception as exc:
-        return bad_request(str(exc))
+        return bad_request(safe_error_message(exc))
 
 
 @app.post("/rotate")
@@ -1085,7 +1107,7 @@ def rotate() -> Response:
             mimetype="application/pdf",
         )
     except Exception as exc:
-        return bad_request(str(exc))
+        return bad_request(safe_error_message(exc))
 
 
 @app.post("/extract-text")
@@ -1109,7 +1131,7 @@ def extract_text() -> Response:
             mimetype="text/plain",
         )
     except Exception as exc:
-        return bad_request(str(exc))
+        return bad_request(safe_error_message(exc))
 
 
 @app.post("/encrypt")
@@ -1136,7 +1158,7 @@ def encrypt() -> Response:
             mimetype="application/pdf",
         )
     except Exception as exc:
-        return bad_request(str(exc))
+        return bad_request(safe_error_message(exc))
 
 
 @app.post("/decrypt")
@@ -1169,7 +1191,7 @@ def decrypt() -> Response:
             mimetype="application/pdf",
         )
     except Exception as exc:
-        return bad_request(str(exc))
+        return bad_request(safe_error_message(exc))
 
 
 if __name__ == "__main__":

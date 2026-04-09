@@ -8,6 +8,23 @@ test("landing page loads with core sections", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "PDF Tools" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pro Waitlist" })).toBeVisible();
+  await expect(page.locator("footer.site-footer")).toBeVisible();
+});
+
+test("health API returns ok status", async ({ request }) => {
+  const res = await request.get("/api/health");
+  expect(res.ok()).toBeTruthy();
+  const body = await res.json();
+  expect(body.status).toBe("ok");
+});
+
+test("metrics API returns expected shape", async ({ request }) => {
+  const res = await request.get("/api/metrics");
+  expect(res.ok()).toBeTruthy();
+  const body = await res.json();
+  expect(body.metrics).toBeDefined();
+  expect(typeof body.metrics.tool_count).toBe("number");
+  expect(typeof body.metrics.max_upload_mb).toBe("number");
 });
 
 test("waitlist form submits successfully", async ({ page }) => {

@@ -65,21 +65,29 @@ export default function Page() {
       if (!isMounted) return;
 
       if (healthRes.status === "fulfilled") {
-        const healthJson = await healthRes.value.json();
-        setHealth(healthJson);
+        try {
+          const healthJson = await healthRes.value.json();
+          setHealth(healthJson);
+        } catch {
+          setHealth({ status: "error", message: "Invalid health response" });
+        }
       } else {
         setHealth({ status: "error", message: "Backend unreachable" });
       }
 
       if (metricsRes.status === "fulfilled") {
-        const metricsJson = await metricsRes.value.json();
-        const apiMetrics = metricsJson?.metrics || {};
-        setMetrics({
-          totalSignups:
-            typeof apiMetrics.total_signups === "number" ? apiMetrics.total_signups : null,
-          toolCount: typeof apiMetrics.tool_count === "number" ? apiMetrics.tool_count : tools.length,
-          maxUploadMb: typeof apiMetrics.max_upload_mb === "number" ? apiMetrics.max_upload_mb : null,
-        });
+        try {
+          const metricsJson = await metricsRes.value.json();
+          const apiMetrics = metricsJson?.metrics || {};
+          setMetrics({
+            totalSignups:
+              typeof apiMetrics.total_signups === "number" ? apiMetrics.total_signups : null,
+            toolCount: typeof apiMetrics.tool_count === "number" ? apiMetrics.tool_count : tools.length,
+            maxUploadMb: typeof apiMetrics.max_upload_mb === "number" ? apiMetrics.max_upload_mb : null,
+          });
+        } catch {
+          // metrics parse failed; keep defaults
+        }
       }
     });
 
@@ -171,9 +179,6 @@ export default function Page() {
         <p className="muted">
           Backend health: <strong>{health.status || "unknown"}</strong>
         </p>
-        <p className="muted">
-          Connected backend: <code>{backendBase}</code>
-        </p>
       </section>
 
       <section className="problem-solution">
@@ -206,46 +211,106 @@ export default function Page() {
               <h3>{tool.title}</h3>
               {tool.id === "merge" && (
                 <form method="post" action={`${backendBase}/merge`} encType="multipart/form-data">
-                  <input type="file" name="files" accept=".pdf,application/pdf" multiple required />
+                  <input
+                    type="file"
+                    name="files"
+                    accept=".pdf,application/pdf"
+                    multiple
+                    required
+                    aria-label="Upload PDF files"
+                  />
                   <button type="submit">Merge & Download</button>
                 </form>
               )}
               {tool.id === "split" && (
                 <form method="post" action={`${backendBase}/split`} encType="multipart/form-data">
-                  <input type="file" name="file" accept=".pdf,application/pdf" required />
-                  <input type="text" name="ranges" placeholder="1-2,3,5-7" required />
+                  <input
+                    type="file"
+                    name="file"
+                    accept=".pdf,application/pdf"
+                    required
+                    aria-label="Upload PDF file"
+                  />
+                  <input
+                    type="text"
+                    name="ranges"
+                    placeholder="1-2,3,5-7"
+                    required
+                    aria-label="Page ranges"
+                  />
                   <button type="submit">Split & Download ZIP</button>
                 </form>
               )}
               {tool.id === "rotate" && (
                 <form method="post" action={`${backendBase}/rotate`} encType="multipart/form-data">
-                  <input type="file" name="file" accept=".pdf,application/pdf" required />
-                  <select name="angle" defaultValue="90">
+                  <input
+                    type="file"
+                    name="file"
+                    accept=".pdf,application/pdf"
+                    required
+                    aria-label="Upload PDF file"
+                  />
+                  <select name="angle" defaultValue="90" aria-label="Rotation angle">
                     <option value="90">90 degrees</option>
                     <option value="180">180 degrees</option>
                     <option value="270">270 degrees</option>
                   </select>
-                  <input type="text" name="pages" placeholder="Optional: 1,3-5" />
+                  <input
+                    type="text"
+                    name="pages"
+                    placeholder="Optional: 1,3-5"
+                    aria-label="Optional page numbers for rotation"
+                  />
                   <button type="submit">Rotate & Download</button>
                 </form>
               )}
               {tool.id === "extract" && (
                 <form method="post" action={`${backendBase}/extract-text`} encType="multipart/form-data">
-                  <input type="file" name="file" accept=".pdf,application/pdf" required />
+                  <input
+                    type="file"
+                    name="file"
+                    accept=".pdf,application/pdf"
+                    required
+                    aria-label="Upload PDF file"
+                  />
                   <button type="submit">Extract TXT</button>
                 </form>
               )}
               {tool.id === "encrypt" && (
                 <form method="post" action={`${backendBase}/encrypt`} encType="multipart/form-data">
-                  <input type="file" name="file" accept=".pdf,application/pdf" required />
-                  <input type="password" name="password" placeholder="Password" required />
+                  <input
+                    type="file"
+                    name="file"
+                    accept=".pdf,application/pdf"
+                    required
+                    aria-label="Upload PDF file"
+                  />
+                  <input
+                    type="password"
+                    name="password"
+                    placeholder="Password"
+                    required
+                    aria-label="Password"
+                  />
                   <button type="submit">Encrypt & Download</button>
                 </form>
               )}
               {tool.id === "decrypt" && (
                 <form method="post" action={`${backendBase}/decrypt`} encType="multipart/form-data">
-                  <input type="file" name="file" accept=".pdf,application/pdf" required />
-                  <input type="password" name="password" placeholder="Current password" required />
+                  <input
+                    type="file"
+                    name="file"
+                    accept=".pdf,application/pdf"
+                    required
+                    aria-label="Upload PDF file"
+                  />
+                  <input
+                    type="password"
+                    name="password"
+                    placeholder="Current password"
+                    required
+                    aria-label="Current password"
+                  />
                   <button type="submit">Decrypt & Download</button>
                 </form>
               )}
@@ -261,28 +326,45 @@ export default function Page() {
             <h3>Join early access</h3>
             <p className="muted">Tell us your workflow so we can prioritize features that unblock your team fastest.</p>
             <form onSubmit={submitWaitlist}>
-              <input type="text" name="name" placeholder="Name" maxLength={120} />
-              <input type="email" name="email" placeholder="Work email" required />
-              <input type="text" name="team_size" placeholder="Team size (e.g. 5-10)" maxLength={60} />
-              <input type="text" name="monthly_volume" placeholder="Monthly PDF volume (e.g. 2,000 docs)" maxLength={80} />
-              <select name="primary_use_case" defaultValue={useCases[0]}>
+              <input type="text" name="name" placeholder="Name" maxLength={120} aria-label="Your name" />
+              <input type="email" name="email" placeholder="Work email" required aria-label="Work email" />
+              <input
+                type="text"
+                name="team_size"
+                placeholder="Team size (e.g. 5-10)"
+                maxLength={60}
+                aria-label="Team size"
+              />
+              <input
+                type="text"
+                name="monthly_volume"
+                placeholder="Monthly PDF volume (e.g. 2,000 docs)"
+                maxLength={80}
+                aria-label="Monthly PDF volume"
+              />
+              <select name="primary_use_case" defaultValue={useCases[0]} aria-label="Primary use case">
                 {useCases.map((entry) => (
                   <option key={entry} value={entry}>
                     {entry}
                   </option>
                 ))}
               </select>
-              <select name="timeline" defaultValue="this-quarter">
+              <select name="timeline" defaultValue="this-quarter" aria-label="Implementation timeline">
                 <option value="this-week">Need a fix this week</option>
                 <option value="this-month">Need a fix this month</option>
                 <option value="this-quarter">Planning this quarter</option>
               </select>
-              <select name="plan_interest" defaultValue="pro">
+              <select name="plan_interest" defaultValue="pro" aria-label="Plan interest">
                 <option value="pro">Pro</option>
                 <option value="team">Team</option>
                 <option value="other">Not sure yet</option>
               </select>
-              <textarea name="use_case" placeholder="What is the most painful PDF step right now?" maxLength={280} />
+              <textarea
+                name="use_case"
+                placeholder="What is the most painful PDF step right now?"
+                maxLength={280}
+                aria-label="Describe your most painful PDF workflow step"
+              />
               <button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Submitting..." : "Join Waitlist"}
               </button>
@@ -314,6 +396,21 @@ export default function Page() {
           ))}
         </div>
       </section>
+
+      <footer className="site-footer">
+        <p>
+          <strong>PDFforge</strong> &mdash; local-first PDF ops for lean teams.
+        </p>
+        <p>
+          <a href="/api/health">Health</a>
+          <span className="footer-sep">&middot;</span>
+          <a href="/api/metrics">Metrics</a>
+          <span className="footer-sep">&middot;</span>
+          <a href="https://github.com/gengirish/pdfforge" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </p>
+      </footer>
     </main>
   );
 }
