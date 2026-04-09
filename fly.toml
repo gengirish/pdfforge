@@ -6,7 +6,8 @@ primary_region = "bom"
 
 [env]
   MAX_CONTENT_LENGTH_MB = "50"
-  WAITLIST_DB_PATH = "/data/waitlist.db"
+  WAITLIST_DB_PATH = "/app/data/waitlist.db"
+  CORS_ORIGINS = "https://pdfforge-frontend.vercel.app,https://hire-with-giri.vercel.app,http://127.0.0.1:3000,http://localhost:3000"
 
 [http_service]
   internal_port = 5050
