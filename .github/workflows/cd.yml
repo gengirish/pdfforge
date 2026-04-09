@@ -1,0 +1,75 @@
+name: CD
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Backend and Frontend
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      - name: Deploy backend to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
+        run: flyctl deploy --remote-only --config fly.toml --app "$FLY_APP_NAME"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        working-directory: frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Deploy frontend to Vercel
+        working-directory: frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
+        run: |
+          vercel deploy --prod --yes --token="$VERCEL_TOKEN" \
+            -b NEXT_PUBLIC_BACKEND_URL="$BACKEND_BASE_URL" \
+            -b BACKEND_API_URL="$BACKEND_BASE_URL" \
+            -e NEXT_PUBLIC_BACKEND_URL="$BACKEND_BASE_URL" \
+            -e BACKEND_API_URL="$BACKEND_BASE_URL"

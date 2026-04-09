@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+waitlist.db
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local

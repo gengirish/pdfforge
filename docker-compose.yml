@@ -1,0 +1,17 @@
+services:
+  pdfforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5050:5050"
+    environment:
+      MAX_CONTENT_LENGTH_MB: ${MAX_CONTENT_LENGTH_MB:-50}
+      WAITLIST_DB_PATH: ${WAITLIST_DB_PATH:-/app/waitlist.db}
+      WAITLIST_DATABASE_URL: ${WAITLIST_DATABASE_URL:-}
+      WAITLIST_ADMIN_TOKEN: ${WAITLIST_ADMIN_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5050/api/v1/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
