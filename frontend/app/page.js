@@ -224,7 +224,7 @@ export default function Page() {
   return (
     <main className="page-wrapper">
       <nav className="nav">
-        <a href="/" className="nav-logo">PDFforge</a>
+        <a href="/" className="nav-logo"><span className="gradient-text">PDFforge</span></a>
         <ul className="nav-links">
           <li><a href="#tools">Tools</a></li>
           <li><a href="#pricing">Pricing</a></li>
@@ -492,7 +492,7 @@ export default function Page() {
       {/* ── Footer ── */}
       <footer className="site-footer">
         <div className="footer-top">
-          <span className="footer-brand">PDFforge</span>
+          <span className="footer-brand"><span className="gradient-text">PDFforge</span></span>
           <span className="footer-byline">Built by{" "}<a href="https://www.intelliforge.tech/" target="_blank" rel="noopener noreferrer">IntelliForge AI</a></span>
         </div>
         <ul className="footer-links">
