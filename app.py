@@ -22,6 +22,12 @@ from flask import Flask, Response, jsonify, redirect, render_template_string, re
 from flask_cors import CORS
 from pypdf import PdfReader, PdfWriter
 
+from pdfforge_api.routes.tools import tools_bp
+from pdfforge_api.routes.jobs import jobs_bp
+from pdfforge_api.routes.docs import docs_bp
+from pdfforge_api.utils.rate_limit import inject_rate_limit_headers
+from pdfforge_api.utils.job_store import start_cleanup_thread
+
 try:
     import psycopg
 except ImportError:  # pragma: no cover - optional dependency in local dev
@@ -29,12 +35,29 @@ except ImportError:  # pragma: no cover - optional dependency in local dev
 
 app = Flask(__name__)
 
+# ── Register Phase 1 blueprints ────────────────────────────────────────────
+app.register_blueprint(tools_bp)
+app.register_blueprint(jobs_bp)
+app.register_blueprint(docs_bp)
+
 ALLOWED_ORIGINS = [
     o.strip()
     for o in os.getenv("CORS_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000").split(",")
     if o.strip()
 ]
 CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=False)
+
+
+@app.after_request
+def _add_standard_headers(response: Response) -> Response:
+    """Attach rate-limit headers and security headers to every response."""
+    if request.path.startswith("/api/"):
+        response = inject_rate_limit_headers(response)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
 
 DEFAULT_MAX_MB = int(os.getenv("MAX_CONTENT_LENGTH_MB", "50"))
 app.config["MAX_CONTENT_LENGTH"] = DEFAULT_MAX_MB * 1024 * 1024
@@ -1189,6 +1212,7 @@ def build_download_name(suffix: str, extension: str) -> str:
 
 
 init_waitlist_db()
+start_cleanup_thread()
 
 
 @app.get("/")
@@ -1627,6 +1651,10 @@ def lemonsqueezy_checkout_v1() -> Response:
 @app.errorhandler(413)
 def request_too_large(_: Exception) -> Response:
     max_mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+    if request.path.startswith("/api/"):
+        from pdfforge_api.utils.response import file_too_large_error
+        body, status = file_too_large_error(max_mb)
+        return jsonify(body), status
     return bad_request(f"File too large. Maximum upload size is {max_mb}MB.")
 
 

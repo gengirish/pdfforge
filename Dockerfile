@@ -11,6 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
+COPY pdfforge_api/ pdfforge_api/
 
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 RUN mkdir -p /app/data && chown appuser:appgroup /app/data
