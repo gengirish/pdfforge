@@ -1,28 +1,25 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "PDFforge | Local-First PDF Ops",
+  title: "PDFforge — Open-source PDF toolkit for privacy-first teams",
   description:
-    "Local-first PDF workflow platform for ops teams. Merge, split, rotate, extract, encrypt, and validate demand with a built-in waitlist funnel.",
+    "Open-source PDF toolkit by IntelliForge AI. Merge, split, rotate, extract, encrypt PDFs on your own infrastructure. No cloud uploads.",
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://hire-with-giri.vercel.app"
+    process.env.NEXT_PUBLIC_SITE_URL || "https://pdfforge.intelliforge.tech"
   ),
   openGraph: {
-    title: "PDFforge | Local-First PDF Ops",
+    title: "PDFforge — Open-source PDF toolkit",
     description:
-      "Fix broken document workflows in minutes. Merge, split, rotate, extract, encrypt PDFs locally.",
+      "Stop routing sensitive PDFs through someone else's cloud. Self-host or use our hosted plan.",
     type: "website",
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "PDFforge",
     description:
-      "Local-first PDF ops for lean teams. No cloud upload by default.",
+      "Open-source, privacy-first PDF ops. Merge, split, encrypt — your files never leave your machine.",
   },
-  robots: {
-    index: true,
-    follow: true,
-  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }) {
