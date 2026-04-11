@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdfforge-sdk"
+version = "0.1.0"
+description = "Python SDK for the PDFforge PDF toolkit API"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [{name = "IntelliForge AI", email = "hello@intelliforge.tech"}]
+keywords = ["pdf", "merge", "split", "encrypt", "api", "sdk"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "requests>=2.28",
+    "typing_extensions>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "responses>=0.23",
+]
+
+[project.urls]
+Homepage = "https://pdfforge.intelliforge.tech"
+Repository = "https://github.com/gengirish/pdfforge"
+Documentation = "https://pdfforge-api.fly.dev/api/v1/docs"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pdfforge*"]
