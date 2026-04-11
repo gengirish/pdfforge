@@ -27,6 +27,8 @@ from pdfforge_api.routes.jobs import jobs_bp
 from pdfforge_api.routes.docs import docs_bp
 from pdfforge_api.routes.pipeline import pipeline_bp
 from pdfforge_api.routes.batch import batch_bp
+from pdfforge_api.routes.capabilities import capabilities_bp
+from pdfforge_api.routes.agent import agent_bp
 from pdfforge_api.utils.rate_limit import inject_rate_limit_headers
 from pdfforge_api.utils.job_store import start_cleanup_thread
 
@@ -43,6 +45,8 @@ app.register_blueprint(jobs_bp)
 app.register_blueprint(docs_bp)
 app.register_blueprint(pipeline_bp)
 app.register_blueprint(batch_bp)
+app.register_blueprint(capabilities_bp)
+app.register_blueprint(agent_bp)
 
 ALLOWED_ORIGINS = [
     o.strip()
