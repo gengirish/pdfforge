@@ -99,6 +99,44 @@ def output_file_path(job_id: str) -> Path | None:
     return p if p.exists() else None
 
 
+def create_async_job(*, job_id: str, tool: str) -> dict[str, Any]:
+    """Create a placeholder manifest for an async (queued) job."""
+    _ensure_dir()
+    d = job_dir(job_id)
+    d.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(hours=JOB_RETENTION_HOURS)
+
+    manifest: dict[str, Any] = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0,
+        "tool": tool,
+        "output_url": "",
+        "output_filename": "",
+        "mimetype": "",
+        "metadata": {},
+        "created_at": now.isoformat(timespec="seconds"),
+        "updated_at": now.isoformat(timespec="seconds"),
+        "expires_at": expires.isoformat(timespec="seconds"),
+        "error": None,
+    }
+    _manifest_path(job_id).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
+
+
+def update_manifest(job_id: str, **fields: Any) -> dict[str, Any] | None:
+    """Merge *fields* into the existing manifest and persist."""
+    manifest = read_manifest(job_id)
+    if manifest is None:
+        return None
+    manifest.update(fields)
+    manifest["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    _manifest_path(job_id).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest
+
+
 def delete_job(job_id: str) -> bool:
     """Remove job directory.  Returns ``True`` if it existed."""
     d = job_dir(job_id)
