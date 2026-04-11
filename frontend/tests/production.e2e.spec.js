@@ -160,6 +160,9 @@ test.describe("page structure", () => {
     const metricsLink = footer.locator('a[href="/api/metrics"]');
     await expect(metricsLink).toBeVisible();
 
+    const feedbackLink = footer.locator('a[href="#feedback"]');
+    await expect(feedbackLink).toBeVisible();
+
     const ghLink = footer.locator('a[href*="github.com/gengirish/pdfforge"]');
     await expect(ghLink).toBeVisible();
     await expect(ghLink).toHaveAttribute("target", "_blank");
@@ -445,5 +448,99 @@ test.describe("accessibility basics", () => {
       const alt = await images.nth(i).getAttribute("alt");
       expect(alt).not.toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Beta Feedback
+// ---------------------------------------------------------------------------
+
+test.describe("beta feedback", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/");
+  });
+
+  test("feedback section renders with form and resources", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: "Beta Feedback" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Share your experience" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Beta Resources" })).toBeVisible();
+  });
+
+  test("feedback form has all fields with aria-labels", async ({ page }) => {
+    const form = page.locator("#feedback form").first();
+    await expect(form.locator('[aria-label="Feedback email"]')).toBeVisible();
+    await expect(form.locator('[aria-label="Rating"]')).toBeVisible();
+    await expect(form.locator('[aria-label="Feedback message"]')).toBeVisible();
+    await expect(form.getByRole("button", { name: "Send Feedback" })).toBeVisible();
+  });
+
+  test("rating select has 5 options", async ({ page }) => {
+    const form = page.locator("#feedback form").first();
+    const options = form.locator('[aria-label="Rating"] option');
+    await expect(options).toHaveCount(5);
+  });
+
+  test("feedback submission succeeds", async ({ page }) => {
+    const form = page.locator("#feedback form").first();
+    await form.locator('[aria-label="Feedback email"]').fill(`fb-${Date.now()}@example.com`);
+    await form.locator('[aria-label="Rating"]').selectOption("4");
+    await form.locator('[aria-label="Feedback message"]').fill("Great tool, needs OCR support.");
+    await form.getByRole("button", { name: "Send Feedback" }).click();
+    await expect(page.locator("#feedback .success")).toContainText(/thank you/i);
+  });
+
+  test("feedback form rejects empty message", async ({ page }) => {
+    const form = page.locator("#feedback form").first();
+    const msgField = form.locator('[aria-label="Feedback message"]');
+    await expect(msgField).toHaveAttribute("required", "");
+  });
+
+  test("beta resources section has test PDF link", async ({ page }) => {
+    const resources = page.locator("#feedback .card").nth(1);
+    const link = resources.locator('a[href*="test-pdf"]');
+    await expect(link).toBeVisible();
+    await expect(link).toContainText("Download test PDF");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Usage API
+// ---------------------------------------------------------------------------
+
+test.describe("usage API", () => {
+  test("GET /api/metrics includes tool_usage field", async ({ request }) => {
+    const res = await request.get("/api/metrics");
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.metrics.tool_usage).toBeDefined();
+    expect(typeof body.metrics.tool_usage).toBe("object");
+  });
+
+  test("POST /api/feedback returns 201 for valid input", async ({ request }) => {
+    const res = await request.post("/api/feedback", {
+      data: {
+        email: `fb-api-${Date.now()}@example.com`,
+        rating: 5,
+        message: "E2E feedback test",
+        page: "/",
+      },
+    });
+    expect(res.status()).toBe(201);
+    const body = await res.json();
+    expect(body.status).toBe("ok");
+  });
+
+  test("POST /api/feedback rejects missing message", async ({ request }) => {
+    const res = await request.post("/api/feedback", {
+      data: { email: "x@y.com", rating: 3, message: "" },
+    });
+    expect(res.status()).toBe(400);
+  });
+
+  test("POST /api/feedback rejects invalid rating", async ({ request }) => {
+    const res = await request.post("/api/feedback", {
+      data: { email: "x@y.com", rating: 0, message: "test" },
+    });
+    expect(res.status()).toBe(400);
   });
 });

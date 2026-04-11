@@ -4,3 +4,4 @@ pypdf
 pdfplumber
 gunicorn
 psycopg[binary]
+reportlab

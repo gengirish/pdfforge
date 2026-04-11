@@ -8,7 +8,9 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 import zipfile
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -47,6 +49,19 @@ LEMONSQUEEZY_PRO_VARIANT_ID = os.getenv("LEMONSQUEEZY_PRO_VARIANT_ID", "")
 LEMONSQUEEZY_TEAM_VARIANT_ID = os.getenv("LEMONSQUEEZY_TEAM_VARIANT_ID", "")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+_usage_lock = threading.Lock()
+_usage_counts: Counter[str] = Counter()
+
+
+def record_tool_usage(tool_id: str) -> None:
+    with _usage_lock:
+        _usage_counts[tool_id] += 1
+
+
+def get_usage_counts() -> dict[str, int]:
+    with _usage_lock:
+        return dict(_usage_counts)
 
 
 TOOL_CARDS = [
@@ -621,6 +636,19 @@ def init_waitlist_db() -> None:
                 )
                 cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email)")
                 cur.execute("CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status)")
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS feedback (
+                        id BIGSERIAL PRIMARY KEY,
+                        email TEXT NOT NULL DEFAULT '',
+                        rating INTEGER NOT NULL DEFAULT 0,
+                        message TEXT NOT NULL DEFAULT '',
+                        page TEXT NOT NULL DEFAULT '',
+                        source_ip TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
             conn.commit()
         return
 
@@ -659,6 +687,19 @@ def init_waitlist_db() -> None:
         )
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sub_email ON subscriptions(email)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sub_status ON subscriptions(status)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL DEFAULT '',
+                rating INTEGER NOT NULL DEFAULT 0,
+                message TEXT NOT NULL DEFAULT '',
+                page TEXT NOT NULL DEFAULT '',
+                source_ip TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         conn.commit()
 
 
@@ -1012,6 +1053,83 @@ def waitlist_summary() -> dict:
     return {"total_signups": total_signups, "by_plan": by_plan}
 
 
+def create_feedback(*, email: str, rating: int, message: str, page: str, source_ip: str) -> None:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    if _waitlist_using_postgres():
+        if psycopg is None:
+            raise RuntimeError("Postgres driver not installed.")
+        with psycopg.connect(WAITLIST_DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO feedback (email, rating, message, page, source_ip, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (email, rating, message, page, source_ip, now),
+                )
+            conn.commit()
+        return
+    with sqlite3.connect(WAITLIST_DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO feedback (email, rating, message, page, source_ip, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (email, rating, message, page, source_ip, now),
+        )
+        conn.commit()
+
+
+def read_feedback(limit: int = 200) -> list[dict]:
+    if _waitlist_using_postgres():
+        if psycopg is None:
+            return []
+        with psycopg.connect(WAITLIST_DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, email, rating, message, page, created_at FROM feedback ORDER BY id DESC LIMIT %s",
+                    (limit,),
+                )
+                rows = cur.fetchall()
+        return [
+            {"id": r[0], "email": r[1], "rating": r[2], "message": r[3], "page": r[4], "created_at": r[5]}
+            for r in rows
+        ]
+    with sqlite3.connect(WAITLIST_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, email, rating, message, page, created_at FROM feedback ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def beta_candidates(limit: int = 50) -> list[dict]:
+    """Score waitlist signups by urgency signals and return top candidates."""
+    signups = read_waitlist_signups(limit=1000)
+    scored = []
+    for s in signups:
+        score = 0
+        uc = (s.get("use_case") or "").lower()
+        plan = (s.get("plan_interest") or "").lower()
+        if plan == "team":
+            score += 3
+        elif plan == "pro":
+            score += 2
+        if "this-week" in uc or "this week" in uc:
+            score += 3
+        elif "this-month" in uc or "this month" in uc:
+            score += 2
+        volume_keywords = ["1,000", "2,000", "5,000", "10,000", "high", "many"]
+        if any(kw in uc for kw in volume_keywords):
+            score += 2
+        if len(uc) > 60:
+            score += 1
+        scored.append({**s, "beta_score": score})
+    scored.sort(key=lambda x: x["beta_score"], reverse=True)
+    return scored[:limit]
+
+
 def is_admin_authorized() -> bool:
     if not WAITLIST_ADMIN_TOKEN:
         return True
@@ -1129,6 +1247,7 @@ def metrics_v1() -> Response:
                 "waitlist_by_plan": summary["by_plan"],
                 "tool_count": len(TOOL_CARDS),
                 "max_upload_mb": app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024),
+                "tool_usage": get_usage_counts(),
                 "generated_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
             },
         }
@@ -1355,6 +1474,88 @@ def subscription_lookup_v1() -> Response:
     ), 200
 
 
+@app.post("/api/v1/feedback")
+def feedback_v1() -> Response:
+    payload = request.get_json(silent=True) or {}
+    email = str(payload.get("email", "")).strip()
+    rating = payload.get("rating", 0)
+    message = str(payload.get("message", "")).strip()
+    page = str(payload.get("page", "")).strip()
+    if not message:
+        return jsonify({"status": "error", "message": "Feedback message is required"}), 400
+    if not isinstance(rating, int) or rating < 1 or rating > 5:
+        return jsonify({"status": "error", "message": "Rating must be 1-5"}), 400
+    source_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (request.remote_addr or "")
+    try:
+        create_feedback(email=email, rating=rating, message=message, page=page, source_ip=source_ip)
+    except Exception as exc:
+        app.logger.exception("Feedback save failed: %s", exc)
+        return jsonify({"status": "error", "message": "Could not save feedback"}), 500
+    return jsonify({"status": "ok", "message": "Thank you for your feedback!"}), 201
+
+
+@app.get("/api/v1/feedback")
+def feedback_list_v1() -> Response:
+    if not is_admin_authorized():
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    return jsonify({"status": "ok", "items": read_feedback(limit=200)})
+
+
+@app.get("/api/v1/beta-candidates")
+def beta_candidates_v1() -> Response:
+    if not is_admin_authorized():
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    limit = request.args.get("limit", "50")
+    try:
+        n = min(int(limit), 200)
+    except ValueError:
+        n = 50
+    return jsonify({"status": "ok", "candidates": beta_candidates(limit=n)})
+
+
+@app.get("/api/v1/usage")
+def usage_v1() -> Response:
+    return jsonify({"status": "ok", "tool_usage": get_usage_counts()})
+
+
+@app.get("/api/v1/test-pdf")
+def test_pdf_v1() -> Response:
+    """Generate a sample multi-page PDF for beta testers to exercise the tools."""
+    writer = PdfWriter()
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas as rl_canvas
+
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=letter)
+    pages = [
+        ("PDFforge Test Document", "Page 1: Use this file to test merge, split, rotate, and encrypt tools."),
+        ("Chapter 1 — Contracts", "This page simulates a contract section.\nTeams use PDFforge to combine contract addenda."),
+        ("Chapter 2 — Invoices", "This page simulates invoice pages.\nSplit this page range to extract invoices."),
+        ("Chapter 3 — Reports", "This page simulates a quarterly report.\nRotate it to test orientation fixing."),
+        ("Appendix — Security", "Encrypt this file with a password to test security workflows."),
+    ]
+    for title, body in pages:
+        c.setFont("Helvetica-Bold", 24)
+        c.drawString(72, 700, title)
+        c.setFont("Helvetica", 14)
+        y = 660
+        for line in body.split("\n"):
+            c.drawString(72, y, line)
+            y -= 20
+        c.setFont("Helvetica", 10)
+        c.drawString(72, 50, "Generated by PDFforge — https://pdfforge-api.fly.dev")
+        c.showPage()
+    c.save()
+    buf.seek(0)
+
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="pdfforge-test-document.pdf",
+        mimetype="application/pdf",
+    )
+
+
 @app.post("/api/v1/checkout")
 def lemonsqueezy_checkout_v1() -> Response:
     body = request.get_json(silent=True) or {}
@@ -1431,6 +1632,7 @@ def request_too_large(_: Exception) -> Response:
 
 @app.post("/merge")
 def merge() -> Response:
+    record_tool_usage("merge")
     try:
         files = validate_pdf_upload("files", allow_multiple=True)
         writer = PdfWriter()
@@ -1454,6 +1656,7 @@ def merge() -> Response:
 
 @app.post("/split")
 def split() -> Response:
+    record_tool_usage("split")
     ranges_text = request.form.get("ranges", "").strip()
     if not ranges_text:
         return bad_request("Please provide page ranges.")
@@ -1488,6 +1691,7 @@ def split() -> Response:
 
 @app.post("/rotate")
 def rotate() -> Response:
+    record_tool_usage("rotate")
     angle_text = request.form.get("angle", "90").strip()
     pages_text = request.form.get("pages", "").strip()
     try:
@@ -1529,6 +1733,7 @@ def rotate() -> Response:
 
 @app.post("/extract-text")
 def extract_text() -> Response:
+    record_tool_usage("extract_text")
     try:
         file = validate_pdf_upload("file")[0]
         file_bytes = file.read()
@@ -1553,6 +1758,7 @@ def extract_text() -> Response:
 
 @app.post("/encrypt")
 def encrypt() -> Response:
+    record_tool_usage("encrypt")
     password = request.form.get("password", "").strip()
     if not password:
         return bad_request("Please provide a password.")
@@ -1580,6 +1786,7 @@ def encrypt() -> Response:
 
 @app.post("/decrypt")
 def decrypt() -> Response:
+    record_tool_usage("decrypt")
     password = request.form.get("password", "").strip()
     if not password:
         return bad_request("Please provide the current password.")

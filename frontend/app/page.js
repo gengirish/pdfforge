@@ -102,6 +102,9 @@ export default function Page() {
   const [waitlistStatus, setWaitlistStatus] = useState("");
   const [waitlistError, setWaitlistError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
+  const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const waitlistAction = useMemo(() => "/api/waitlist", []);
 
   useEffect(() => {
@@ -194,6 +197,38 @@ export default function Page() {
       }
     } catch {
       window.location.href = "#waitlist";
+    }
+  }
+
+  async function submitFeedback(event) {
+    event.preventDefault();
+    setFeedbackStatus("");
+    setFeedbackError("");
+    setIsSendingFeedback(true);
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      email: String(form.get("email") || "").trim(),
+      rating: parseInt(String(form.get("rating") || "5"), 10),
+      message: String(form.get("message") || "").trim(),
+      page: window.location.pathname,
+    };
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFeedbackError(data.message || "Could not submit feedback");
+        return;
+      }
+      setFeedbackStatus(data.message || "Feedback sent!");
+      event.currentTarget.reset();
+    } catch {
+      setFeedbackError("Could not send feedback right now.");
+    } finally {
+      setIsSendingFeedback(false);
     }
   }
 
@@ -497,6 +532,53 @@ export default function Page() {
         </div>
       </section>
 
+      <section id="feedback">
+        <h2>Beta Feedback</h2>
+        <div className="waitlist-grid">
+          <article className="card">
+            <h3>Share your experience</h3>
+            <p className="muted">Help us prioritize features and squash bugs faster.</p>
+            <form onSubmit={submitFeedback}>
+              <input type="email" name="email" placeholder="Email (optional)" aria-label="Feedback email" />
+              <select name="rating" defaultValue="5" aria-label="Rating">
+                <option value="5">5 — Love it</option>
+                <option value="4">4 — Works well</option>
+                <option value="3">3 — Decent</option>
+                <option value="2">2 — Needs work</option>
+                <option value="1">1 — Broken</option>
+              </select>
+              <textarea
+                name="message"
+                placeholder="What worked? What didn't? What do you wish existed?"
+                maxLength={600}
+                required
+                aria-label="Feedback message"
+              />
+              <button type="submit" disabled={isSendingFeedback}>
+                {isSendingFeedback ? "Sending..." : "Send Feedback"}
+              </button>
+            </form>
+            {feedbackStatus ? <p className="success">{feedbackStatus}</p> : null}
+            {feedbackError ? <p className="error">{feedbackError}</p> : null}
+          </article>
+          <article className="card">
+            <h3>Beta Resources</h3>
+            <p className="muted">Everything you need to test PDFforge.</p>
+            <ul className="muted">
+              <li>
+                <a href={`${backendBase}/api/v1/test-pdf`} target="_blank" rel="noopener noreferrer">
+                  Download test PDF
+                </a>{" "}
+                — 5-page sample file
+              </li>
+              <li>Try each tool: merge, split, rotate, extract, encrypt, decrypt</li>
+              <li>Submit feedback for every issue or feature request</li>
+              <li>Check your subscription: <code>/api/subscription</code></li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
       <footer className="site-footer">
         <p>
           <strong>PDFforge</strong> &mdash; local-first PDF ops for lean teams.
@@ -505,6 +587,8 @@ export default function Page() {
           <a href="/api/health">Health</a>
           <span className="footer-sep">&middot;</span>
           <a href="/api/metrics">Metrics</a>
+          <span className="footer-sep">&middot;</span>
+          <a href="#feedback">Feedback</a>
           <span className="footer-sep">&middot;</span>
           <a href="https://github.com/gengirish/pdfforge" target="_blank" rel="noopener noreferrer">
             GitHub
