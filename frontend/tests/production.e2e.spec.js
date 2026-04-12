@@ -149,7 +149,7 @@ test.describe("page structure", () => {
   });
 
   test("how-it-works section has 3 steps", async ({ page }) => {
-    const steps = page.locator(".how-step");
+    const steps = page.locator("#how-it-works .how-step");
     await expect(steps).toHaveCount(3);
     await expect(steps.nth(0).locator("h3")).toContainText("Upload locally");
     await expect(steps.nth(1).locator("h3")).toContainText("Pick an operation");

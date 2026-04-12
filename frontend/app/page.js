@@ -297,7 +297,7 @@ export default function Page() {
       </section>
 
       {/* ── How it works ── */}
-      <section>
+      <section id="how-it-works">
         <p className="section-label">How it works</p>
         <h2 className="section-title">Three steps. Zero cloud uploads.</h2>
         <div className="how-grid">
