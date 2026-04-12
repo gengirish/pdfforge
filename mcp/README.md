@@ -37,7 +37,7 @@ Add to your `claude_desktop_config.json`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PDFFORGE_API_URL` | `http://localhost:5000` | PDFforge API base URL |
+| `PDFFORGE_API_URL` | `http://localhost:5050` | PDFforge API base URL (match your `app.py` port) |
 | `PDFFORGE_API_KEY` | *(empty)* | Optional API key for authenticated access |
 
 ## Development

@@ -5,44 +5,77 @@ It is built for solo founders, operators, students, and teams who need practical
 
 ## Why this is product-ready
 
-- Privacy-first: runs fully on localhost
-- Fast utility surface: the 6 most common PDF actions in one place
+- Privacy-first: runs fully on localhost (or your own host)
+- Fast utility surface: the six most common PDF actions in one place, plus automation APIs
 - Beginner-friendly UX: one-page dashboard with guided actions
 - Safer defaults: upload validation, size limits, and clear error messages
-- Versioned API readiness: includes `/api/v1/health` and `/api/v1/tools`
+- Versioned REST API under `/api/v1/*` with OpenAPI, Swagger UI, and ReDoc
 - Live traction-style metrics endpoint at `/api/v1/metrics`
 
-## Current Features
+## Current features
+
+### Dashboard (browser)
 
 - Merge multiple PDFs into one
 - Split by page ranges (download as ZIP)
-- Rotate all pages or selected pages
-- Extract text to `.txt`
-- Encrypt PDF with password
-- Decrypt password-protected PDF
-- Health endpoint at `/health`
-- Versioned API endpoints at `/api/v1/*`
-- Public metrics endpoint for waitlist + product telemetry (`/api/v1/metrics`)
-- Product-style pricing section for future hosted plans
-- Public waitlist capture (form + API)
-- Admin waitlist view backed by SQLite persistence
+- Rotate all pages or selected pages (90° / 180° / 270°)
+- Extract machine-readable text to `.txt`
+- Encrypt with a password
+- Decrypt password-protected PDFs
 
-## Tech Stack
+### REST API — core tools
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/v1/merge` | Combine PDFs (`files` field, multipart) |
+| `POST /api/v1/split` | Page ranges → ZIP of PDFs (`file`, `ranges`) |
+| `POST /api/v1/rotate` | Rotate pages (`file`, `angle`, optional `pages`) |
+| `POST /api/v1/extract_text` | Text export (`file`) |
+| `POST /api/v1/encrypt` | Password-protect (`file`, `password`) |
+| `POST /api/v1/decrypt` | Remove password (`file`, `password`) |
+
+By default, responses are JSON job envelopes with a download URL. Append `?download=true` to stream the raw file (legacy behavior). Authenticated routes expect an API key when enforcement is enabled (see deployment config).
+
+### REST API — automation
+
+- **`POST /api/v1/pipeline`** — Chain multiple operations in one request (JSON body with `steps` and base64 `files`).
+- **`POST /api/v1/batch`** — Run the same tool on many PDFs in parallel (JSON).
+- **Async jobs** — On core tool routes, send `X-Async: true` or `?async=true` for a `202` with `job_id` and `poll_url`; poll **`GET /api/v1/jobs/<id>`** until complete. Optional `webhook_url` and `webhook_secret` form fields for completion callbacks.
+- **`GET /api/v1/capabilities`** — Machine-readable manifest (tools, limits, feature flags, agent hints).
+- **`GET /api/v1/openapi.json`** — OpenAPI 3 specification.
+- **`GET /api/v1/docs`** — Swagger UI.
+- **`GET /api/v1/redoc`** — ReDoc.
+- **`GET /.well-known/ai-plugin.json`** — AI plugin manifest for agent discovery.
+- **`POST /api/v1/agent/interpret`** *(optional)* — Natural language → pipeline plan via Anthropic; set `ANTHROPIC_API_KEY` on the server. Can execute the plan when `execute` and `files` are provided.
+
+### Product & ops
+
+- Legacy **`GET /health`** and versioned **`GET /api/v1/health`**
+- **`GET /api/v1/tools`** — Short list of core tool routes
+- **`GET /api/v1/metrics`** — Waitlist summary, upload limit, tool usage counters
+- **`GET /api/v1/usage`** — Tool usage counters
+- **`GET /api/v1/test-pdf`** — Sample PDF for testing
+- Public **waitlist** capture (HTML form + JSON API) and **admin** waitlist view (SQLite or Postgres)
+- **`POST /api/v1/feedback`** — Beta feedback (optional admin **`GET /api/v1/feedback`**)
+- Landing **pricing** section and Lemon Squeezy checkout hooks (see `docs/payments-setup.md`)
+
+### Clients & integrations
+
+- **Python SDK** — `sdk/python/` (async jobs, pipeline, batch); published as `pdfforge-sdk`.
+- **MCP server** — `mcp/` exposes tools to Claude Desktop and other MCP hosts (`run_pipeline`, `batch_process`, etc.). See `mcp/README.md`.
+
+## Tech stack
 
 - Flask
 - pypdf
 - pdfplumber
 - Next.js 14 (frontend in `frontend/`)
 
-## Local Setup
+## Local setup
 
-1. Open terminal in this folder:
+1. Open a terminal in the project root (the directory that contains `app.py`).
 
-   ```bash
-   cd pdfforge
-   ```
-
-2. Create and activate virtual environment:
+2. Create and activate a virtual environment:
 
    ```bash
    python -m venv .venv
@@ -63,14 +96,17 @@ It is built for solo founders, operators, students, and teams who need practical
 
 5. Open:
 
-   - `http://127.0.0.1:5050`
-   - Health check: `http://127.0.0.1:5050/health`
+   - App: `http://127.0.0.1:5050`
+   - Health: `http://127.0.0.1:5050/health`
    - API health: `http://127.0.0.1:5050/api/v1/health`
-   - API tools: `http://127.0.0.1:5050/api/v1/tools`
-   - API metrics: `http://127.0.0.1:5050/api/v1/metrics`
+   - API tools index: `http://127.0.0.1:5050/api/v1/tools`
+   - Capabilities: `http://127.0.0.1:5050/api/v1/capabilities`
+   - OpenAPI: `http://127.0.0.1:5050/api/v1/openapi.json`
+   - Swagger UI: `http://127.0.0.1:5050/api/v1/docs`
+   - Metrics: `http://127.0.0.1:5050/api/v1/metrics`
    - Waitlist admin: `http://127.0.0.1:5050/admin/waitlist`
 
-## Next.js Frontend
+## Next.js frontend
 
 1. In a new terminal:
 
@@ -119,7 +155,7 @@ Example:
 WAITLIST_DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 ```
 
-## Waitlist Endpoints
+## Waitlist endpoints
 
 - `POST /waitlist` (form submit from landing page)
 - `POST /api/v1/waitlist` (JSON API)
@@ -139,14 +175,13 @@ If `WAITLIST_ADMIN_TOKEN` is set, pass it as:
 - query param: `/admin/waitlist?token=YOUR_TOKEN`
 - or header: `X-Admin-Token: YOUR_TOKEN`
 
-## Product Next Steps (YC-style roadmap)
+## Product next steps (roadmap)
 
 - OCR for scanned PDFs
 - Drag-and-drop + progress UX
 - E-sign and simple form-fill
 - Team workspace + audit logs
 - Usage-based billing + hosted mode
-- Stripe checkout + customer portal
 - Playwright E2E tests and CI pipeline
 
 ## CI/CD
@@ -155,7 +190,13 @@ If `WAITLIST_ADMIN_TOKEN` is set, pass it as:
 - CD workflow: `.github/workflows/cd.yml`
 - Strategy and required secrets: `docs/ci-cd-strategy.md`
 
+## Further documentation
+
+- `docs/beta-runbook.md` — Beta rollout and admin endpoints
+- `docs/payments-setup.md` — Lemon Squeezy
+- `docs/ci-cd-strategy.md` — GitHub Actions and secrets
+
 ## Notes
 
-- This app does not upload files to a cloud service.
+- This app does not upload files to a cloud service by default when self-hosted.
 - OCR is not included yet, so scanned text extraction may be limited.

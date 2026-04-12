@@ -41,7 +41,7 @@ const testimonials = [
 
 const faqs = [
   { q: "Where are my files processed?", a: "Locally on your own infrastructure. Files never leave your machine unless you opt into the hosted plan." },
-  { q: "Can I automate workflows via API?", a: "Yes. Every tool is available at /api/v1/* with structured JSON responses. Script your entire document pipeline." },
+  { q: "Can I automate workflows via API?", a: "Yes. Six core tools live under /api/v1/*, plus pipeline (chain steps), batch (same op on many files), and async jobs with polling or optional webhooks. OpenAPI, Swagger UI, and ReDoc ship with the server." },
   { q: "What does the paid plan add?", a: "Hosted processing (no infra needed), larger file limits, API key management, team workspaces, and audit logs." },
   { q: "Is this open source?", a: "The core engine is MIT-licensed. Enterprise features (SSO, audit, compliance) are available on paid plans." },
 ];
@@ -49,12 +49,12 @@ const faqs = [
 const pricingPlans = [
   {
     name: "Open Source", price: "0", period: "forever",
-    features: ["All 6 PDF tools", "Self-host anywhere", "REST API included", "10MB file limit", "Community support"],
+    features: ["Six core PDF tools", "Pipeline & batch APIs", "Async jobs + optional webhooks", "OpenAPI + Swagger/ReDoc", "Self-host anywhere", "Community support"],
     cta: "You're on this plan", highlighted: false, variantId: null,
   },
   {
     name: "Pro", price: "9", period: "/mo",
-    features: ["Hosted cloud instance", "100MB file uploads", "API key with rate limits", "Priority email support", "Usage analytics dashboard"],
+    features: ["Hosted cloud instance", "100MB file uploads", "API key auth + rate limits", "Pipeline, batch, async & webhooks", "Priority email support", "Usage analytics dashboard"],
     cta: "Start free trial", highlighted: true, variantId: process.env.NEXT_PUBLIC_LS_PRO_VARIANT_ID || "",
   },
   {
@@ -227,6 +227,7 @@ export default function Page() {
         <a href="/" className="nav-logo"><span className="gradient-text">PDFforge</span></a>
         <ul className="nav-links">
           <li><a href="#tools">Tools</a></li>
+          <li><a href="#api">API</a></li>
           <li><a href="#pricing">Pricing</a></li>
           <li><a href="#waitlist">Early access</a></li>
           <li><a href="https://github.com/gengirish/pdfforge" target="_blank" rel="noopener noreferrer">GitHub</a></li>
@@ -239,7 +240,9 @@ export default function Page() {
         <h1>Stop routing sensitive PDFs<br />through <em>someone else&#39;s cloud</em></h1>
         <p className="hero-sub">
           PDFforge is an open-source PDF toolkit that runs on your infrastructure.
-          Merge, split, encrypt, and extract — your files never leave your machine.
+          Merge, split, rotate, extract text, encrypt, and decrypt in the browser — plus
+          pipeline and batch APIs, async jobs, and interactive OpenAPI docs for automation.
+          Your files never leave your machine.
         </p>
         <div className="hero-actions">
           <a href="#waitlist" className="btn-primary">Get early access</a>
@@ -300,7 +303,7 @@ export default function Page() {
         <div className="how-grid">
           <div className="how-step"><div className="step-num">01</div><h3>Upload locally</h3><p>Select PDFs from your machine. Files go straight to your Flask backend — never to a third-party server.</p></div>
           <div className="how-step"><div className="step-num">02</div><h3>Pick an operation</h3><p>Merge, split, rotate, extract text, encrypt, or decrypt. Each tool returns results in seconds.</p></div>
-          <div className="how-step"><div className="step-num">03</div><h3>Download or automate</h3><p>Grab the output file instantly, or call the REST API to integrate into your existing workflow.</p></div>
+          <div className="how-step"><div className="step-num">03</div><h3>Download or automate</h3><p>Grab the output file instantly, or use the REST API — single tools, multi-step pipelines, bulk batch jobs, async processing with webhooks, and OpenAPI-backed clients.</p></div>
         </div>
       </section>
 
@@ -308,7 +311,10 @@ export default function Page() {
       <section id="tools">
         <p className="section-label">Toolkit</p>
         <h2 className="section-title">Everything your team needs for PDFs</h2>
-        <p className="section-desc">Process files inline — results appear here, no page navigation.</p>
+        <p className="section-desc">
+          Process files inline — results appear here, no page navigation. For chained workflows and bulk files, use the{" "}
+          <a href="#api">pipeline and batch APIs</a> below.
+        </p>
         <div className="tools-grid">
           {tools.map((tool) => (
             <div className="tool-cell" key={tool.id}>
@@ -376,6 +382,73 @@ export default function Page() {
               <ToolResult toolId={tool.id} />
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── API & integrations ── */}
+      <section id="api">
+        <p className="section-label">Developers</p>
+        <h2 className="section-title">Automation-ready API</h2>
+        <p className="section-desc">
+          Everything below is served by the same Flask backend as the dashboard ({backendBase}). Replace with your deployed URL in production.
+        </p>
+        <div className="how-grid">
+          <div className="how-step">
+            <div className="step-num">REST</div>
+            <h3>Core tools</h3>
+            <p>
+              <code>POST /api/v1/merge</code>, <code>/split</code>, <code>/rotate</code>, <code>/extract_text</code>,{" "}
+              <code>/encrypt</code>, <code>/decrypt</code> — JSON job envelopes by default, or <code>?download=true</code> for raw files.
+            </p>
+          </div>
+          <div className="how-step">
+            <div className="step-num">Flow</div>
+            <h3>Pipeline &amp; batch</h3>
+            <p>
+              <code>POST /api/v1/pipeline</code> chains steps without multiple round trips.{" "}
+              <code>POST /api/v1/batch</code> runs the same operation on many PDFs in one request.
+            </p>
+          </div>
+          <div className="how-step">
+            <div className="step-num">Async</div>
+            <h3>Jobs &amp; webhooks</h3>
+            <p>
+              Pass <code>X-Async: true</code> or <code>?async=true</code> on tool routes for <code>202</code> queued responses, then poll{" "}
+              <code>/api/v1/jobs/&lt;id&gt;</code>. Optional <code>webhook_url</code> and <code>webhook_secret</code> form fields notify when work finishes.
+            </p>
+          </div>
+          <div className="how-step">
+            <div className="step-num">Docs</div>
+            <h3>OpenAPI &amp; discovery</h3>
+            <p>
+              <a href={`${backendBase}/api/v1/capabilities`} target="_blank" rel="noopener noreferrer">Capabilities manifest</a>
+              {" · "}
+              <a href={`${backendBase}/api/v1/openapi.json`} target="_blank" rel="noopener noreferrer">OpenAPI JSON</a>
+              {" · "}
+              <a href={`${backendBase}/api/v1/docs`} target="_blank" rel="noopener noreferrer">Swagger UI</a>
+              {" · "}
+              <a href={`${backendBase}/api/v1/redoc`} target="_blank" rel="noopener noreferrer">ReDoc</a>
+            </p>
+          </div>
+          <div className="how-step">
+            <div className="step-num">AI</div>
+            <h3>Optional agent planner</h3>
+            <p>
+              <code>POST /api/v1/agent/interpret</code> turns natural language into a pipeline plan (and can execute it) when{" "}
+              <code>ANTHROPIC_API_KEY</code> is configured on the server.
+            </p>
+          </div>
+          <div className="how-step">
+            <div className="step-num">SDK</div>
+            <h3>MCP &amp; Python</h3>
+            <p>
+              Use the{" "}
+              <a href="https://github.com/gengirish/pdfforge/tree/main/mcp" target="_blank" rel="noopener noreferrer">PDFforge MCP server</a>
+              {" "}for Claude Desktop, or the{" "}
+              <a href="https://github.com/gengirish/pdfforge/tree/main/sdk/python" target="_blank" rel="noopener noreferrer">Python SDK</a>
+              {" "}(async jobs, pipeline, batch).
+            </p>
+          </div>
         </div>
       </section>
 
@@ -480,10 +553,16 @@ export default function Page() {
             <h3>Beta resources</h3>
             <p className="fb-hint">Everything you need to test PDFforge.</p>
             <ul className="fb-resources">
-              <li><a href={`${backendBase}/api/v1/test-pdf`} target="_blank" rel="noopener noreferrer">Download test PDF</a> — 5-page sample to exercise every tool</li>
-              <li>Try each tool: merge, split, rotate, extract, encrypt, decrypt</li>
+              <li><a href={`${backendBase}/api/v1/test-pdf`} target="_blank" rel="noopener noreferrer">Download test PDF</a> — sample to exercise every tool</li>
+              <li>Try each dashboard tool: merge, split, rotate, extract text, encrypt, decrypt</li>
+              <li>
+                API: <a href={`${backendBase}/api/v1/tools`} target="_blank" rel="noopener noreferrer"><code>/api/v1/tools</code></a>
+                {" · "}
+                <a href={`${backendBase}/api/v1/capabilities`} target="_blank" rel="noopener noreferrer">capabilities</a>
+                {" · "}
+                <a href={`${backendBase}/api/v1/docs`} target="_blank" rel="noopener noreferrer">Swagger</a>
+              </li>
               <li>Submit feedback for every issue or feature request</li>
-              <li>API docs: <code>/api/v1/tools</code></li>
             </ul>
           </div>
         </div>
@@ -498,6 +577,7 @@ export default function Page() {
         <ul className="footer-links">
           <li><a href="/api/health">Health</a></li>
           <li><a href="/api/metrics">Metrics</a></li>
+          <li><a href={`${backendBase}/api/v1/docs`} target="_blank" rel="noopener noreferrer">API docs</a></li>
           <li><a href="#feedback">Feedback</a></li>
           <li><a href="https://github.com/gengirish/pdfforge" target="_blank" rel="noopener noreferrer">GitHub</a></li>
           <li><a href="https://www.intelliforge.tech/" target="_blank" rel="noopener noreferrer">IntelliForge AI</a></li>

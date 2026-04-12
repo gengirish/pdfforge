@@ -22,8 +22,9 @@ Scoring factors:
 ### Onboarding Steps
 1. Send alpha invite email (see templates below)
 2. Share the test PDF: `https://pdfforge-api.fly.dev/api/v1/test-pdf`
-3. Point them to the feedback form at `#feedback` on the main page
-4. Set up a shared Slack/Discord channel for real-time support
+3. Point technical testers to interactive API docs: `https://pdfforge-api.fly.dev/api/v1/docs` (Swagger) or `/api/v1/redoc` (ReDoc), and the machine-readable manifest at `/api/v1/capabilities` (see repository `README.md` for the full surface: pipeline, batch, async jobs, webhooks).
+4. Point them to the feedback form at `#feedback` on the main page
+5. Set up a shared Slack/Discord channel for real-time support
 
 ### Success Metrics
 - 80%+ of alpha users complete at least 3 tool operations
