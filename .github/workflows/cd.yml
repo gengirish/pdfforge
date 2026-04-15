@@ -36,7 +36,12 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_APP_NAME: ${{ secrets.FLY_APP_NAME }}
-        run: flyctl deploy --remote-only --config fly.toml --app "$FLY_APP_NAME"
+        run: |
+          if [ -z "${FLY_API_TOKEN:-}" ] || [ -z "${FLY_APP_NAME:-}" ]; then
+            echo "::warning::Skipping Fly.io deploy — add FLY_API_TOKEN and FLY_APP_NAME (repository or production environment secrets) to enable backend CD."
+            exit 0
+          fi
+          flyctl deploy --remote-only --config fly.toml --app "$FLY_APP_NAME"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -83,6 +88,10 @@ jobs:
         env:
           BACKEND_URL: ${{ secrets.BACKEND_BASE_URL }}
         run: |
+          if [ -z "${BACKEND_URL:-}" ]; then
+            echo "::warning::BACKEND_BASE_URL not set — backend smoke test skipped"
+            exit 0
+          fi
           for i in {1..10}; do
             STATUS=$(curl -fsS "$BACKEND_URL/api/v1/health" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null)
             if [ "$STATUS" = "ok" ]; then
