@@ -4,13 +4,86 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const backendBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:5050";
 
+const svgProps = {
+  width: 18,
+  height: 18,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+};
+
+function ToolGlyph({ name }) {
+  switch (name) {
+    case "merge":
+      return (
+        <svg {...svgProps}>
+          <path d="M8 6h13M8 12h13M8 18h13" />
+          <circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none" />
+          <circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "split":
+      return (
+        <svg {...svgProps}>
+          <path d="M16 3h5v18h-5M8 21H3V3h5" />
+          <path d="M12 3v18" />
+        </svg>
+      );
+    case "rotate":
+      return (
+        <svg {...svgProps}>
+          <path d="M23 4v6h-6" />
+          <path d="M20.49 15a9 9 0 1 1 2.12-9.36L23 10" />
+        </svg>
+      );
+    case "extract":
+      return (
+        <svg {...svgProps}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6" />
+          <path d="M16 13H8M16 17H8M10 9H8" />
+        </svg>
+      );
+    case "encrypt":
+      return (
+        <svg {...svgProps}>
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M12 16v2M9 11V7a3 3 0 0 1 6 0v4" />
+        </svg>
+      );
+    case "decrypt":
+      return (
+        <svg {...svgProps}>
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M9 11V7a3 3 0 0 1 5.68-1.33" />
+          <path d="M12 16v2" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+function TrustSvg({ children }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {children}
+    </svg>
+  );
+}
+
 const tools = [
-  { id: "merge", icon: "M", title: "Merge", desc: "Combine multiple PDFs into a single file.", action: "/merge" },
-  { id: "split", icon: "S", title: "Split", desc: "Extract page ranges into separate PDFs.", action: "/split" },
-  { id: "rotate", icon: "R", title: "Rotate", desc: "Fix orientation for all or selected pages.", action: "/rotate" },
-  { id: "extract", icon: "T", title: "Extract Text", desc: "Pull machine-readable text from every page.", action: "/extract-text" },
-  { id: "encrypt", icon: "E", title: "Encrypt", desc: "Lock PDFs with password protection.", action: "/encrypt" },
-  { id: "decrypt", icon: "D", title: "Decrypt", desc: "Remove password from protected files.", action: "/decrypt" },
+  { id: "merge", glyph: "merge", title: "Merge", desc: "Combine multiple PDFs into a single file.", action: "/merge" },
+  { id: "split", glyph: "split", title: "Split", desc: "Extract page ranges into separate PDFs.", action: "/split" },
+  { id: "rotate", glyph: "rotate", title: "Rotate", desc: "Fix orientation for all or selected pages.", action: "/rotate" },
+  { id: "extract", glyph: "extract", title: "Extract Text", desc: "Pull machine-readable text from every page.", action: "/extract-text" },
+  { id: "encrypt", glyph: "encrypt", title: "Encrypt", desc: "Lock PDFs with password protection.", action: "/encrypt" },
+  { id: "decrypt", glyph: "decrypt", title: "Decrypt", desc: "Remove password from protected files.", action: "/decrypt" },
 ];
 
 const useCases = [
@@ -250,10 +323,30 @@ export default function Page() {
         </div>
 
         <div className="trust-row">
-          <div className="trust-badge"><span className="trust-icon">&#128274;</span> Zero cloud uploads</div>
-          <div className="trust-badge"><span className="trust-icon">&#9989;</span> MIT licensed</div>
-          <div className="trust-badge"><span className="trust-icon">&#128272;</span> SOC 2 ready architecture</div>
-          <div className="trust-badge"><span className="trust-icon">&#9203;</span> Sub-second processing</div>
+          <div className="trust-badge">
+            <span className="trust-icon">
+              <TrustSvg><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></TrustSvg>
+            </span>
+            Zero cloud uploads
+          </div>
+          <div className="trust-badge">
+            <span className="trust-icon">
+              <TrustSvg><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" /></TrustSvg>
+            </span>
+            MIT licensed
+          </div>
+          <div className="trust-badge">
+            <span className="trust-icon">
+              <TrustSvg><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /></TrustSvg>
+            </span>
+            SOC 2 ready architecture
+          </div>
+          <div className="trust-badge">
+            <span className="trust-icon">
+              <TrustSvg><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z" /></TrustSvg>
+            </span>
+            Sub-second processing
+          </div>
         </div>
 
         <div className="proof-bar">
@@ -318,7 +411,9 @@ export default function Page() {
         <div className="tools-grid">
           {tools.map((tool) => (
             <div className="tool-cell" key={tool.id}>
-              <div className="tool-icon">{tool.icon}</div>
+              <div className="tool-icon">
+                <ToolGlyph name={tool.glyph} />
+              </div>
               <h3>{tool.title}</h3>
               <p>{tool.desc}</p>
 

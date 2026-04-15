@@ -192,6 +192,9 @@ If `WAITLIST_ADMIN_TOKEN` is set, pass it as:
 
 ## Further documentation
 
+- `docs/v2-feature-launch-post.md` — v2 launch copy (blog, email, social, changelog)
+- `docs/medium-v2-launch-blog.md` — Medium-ready v2 article (paste into editor)
+- `docs/linkedin-v2-launch-post.md` — LinkedIn launch copy (full + short variant)
 - `docs/beta-runbook.md` — Beta rollout and admin endpoints
 - `docs/payments-setup.md` — Lemon Squeezy
 - `docs/ci-cd-strategy.md` — GitHub Actions and secrets
