@@ -57,15 +57,7 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel environment
-        working-directory: frontend
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-
-      - name: Deploy frontend to Vercel
+      - name: Pull Vercel env and deploy frontend
         working-directory: frontend
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -73,11 +65,16 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           BACKEND_BASE_URL: ${{ secrets.BACKEND_BASE_URL }}
         run: |
+          if [ -z "${VERCEL_TOKEN:-}" ] || [ -z "${VERCEL_ORG_ID:-}" ] || [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "::warning::Skipping Vercel deploy — add VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID to the repository or production environment secrets."
+            exit 0
+          fi
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           vercel deploy --prod --yes --token="$VERCEL_TOKEN" \
-            -b NEXT_PUBLIC_BACKEND_URL="$BACKEND_BASE_URL" \
-            -b BACKEND_API_URL="$BACKEND_BASE_URL" \
-            -e NEXT_PUBLIC_BACKEND_URL="$BACKEND_BASE_URL" \
-            -e BACKEND_API_URL="$BACKEND_BASE_URL"
+            -b NEXT_PUBLIC_BACKEND_URL="${BACKEND_BASE_URL:-}" \
+            -b BACKEND_API_URL="${BACKEND_BASE_URL:-}" \
+            -e NEXT_PUBLIC_BACKEND_URL="${BACKEND_BASE_URL:-}" \
+            -e BACKEND_API_URL="${BACKEND_BASE_URL:-}"
 
   smoke-test:
     name: Post-Deploy Smoke Test
